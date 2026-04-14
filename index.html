@@ -128,16 +128,26 @@
         draw(currentRotation);
     });
 
-    window.addName = function() {
-        let name = document.getElementById("nameInput").value.trim();
-        if(!name) return;
-        if(names.includes(name)) {
-            alert("Bu isim zaten listede!");
-            return;
-        }
-        push(ref(db, "names"), name);
-        document.getElementById("nameInput").value = "";
-    };
+// ➕ ADD NAME (NO DUPLICATE - Case Insensitive)
+window.addName = function(){
+    let inputField = document.getElementById("nameInput");
+    let name = inputField.value.trim();
+    
+    if(!name) return;
+
+    // Küçük harf duyarsız kontrol (Her şeyi küçük harfe çevirip karşılaştırır)
+    const isDuplicate = names.some(existingName => 
+        existingName.toLowerCase() === name.toLowerCase()
+    );
+
+    if(isDuplicate){
+        alert("Bu isim zaten katıldı!");
+        return;
+    }
+
+    push(ref(db, "names"), name);
+    inputField.value = "";
+};
 
     function draw(rotation = 0) {
         const size = 300;
