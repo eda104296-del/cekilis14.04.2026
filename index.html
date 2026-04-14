@@ -3,86 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Live Çekiliş Wheel</title>
+    <title>Live Çekiliş - Canlı Yayın</title>
     <style>
-        body {
-            margin: 0;
-            background: radial-gradient(circle at top, #1a1a1a, #0d0d0d);
-            color: white;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            text-align: center;
-        }
-        h1 { margin-top: 20px; font-weight: 300; letter-spacing: 2px; }
-        .card {
-            background: #1f1f1f;
-            padding: 25px;
-            margin: 20px auto;
-            width: 360px;
-            border-radius: 20px;
-            box-shadow: 0 15px 35px rgba(0,0,0,0.6);
-        }
-        input {
-            width: 85%;
-            padding: 12px;
-            border-radius: 10px;
-            border: 1px solid #333;
-            background: #111;
-            color: white;
-            margin: 8px 0;
-            outline: none;
-        }
-        button {
-            padding: 12px 20px;
-            margin-top: 10px;
-            border: none;
-            border-radius: 10px;
-            cursor: pointer;
-            background: #ff4d6d;
-            color: white;
-            font-weight: bold;
-            transition: 0.3s;
-        }
+        body { margin: 0; background: radial-gradient(circle at top, #1a1a1a, #0d0d0d); color: white; font-family: sans-serif; text-align: center; }
+        .card { background: #1f1f1f; padding: 25px; margin: 20px auto; width: 360px; border-radius: 20px; box-shadow: 0 15px 35px rgba(0,0,0,0.6); }
+        input { width: 85%; padding: 12px; border-radius: 10px; border: 1px solid #333; background: #111; color: white; margin: 8px 0; outline: none; }
+        button { padding: 12px 20px; margin-top: 10px; border: none; border-radius: 10px; cursor: pointer; background: #ff4d6d; color: white; font-weight: bold; transition: 0.3s; }
         button:hover { background: #ff2d55; transform: scale(1.05); }
-        #wheel-container {
-            position: relative;
-            width: 300px;
-            height: 300px;
-            margin: 20px auto;
-        }
-        #wheel {
-            background: #222;
-            border-radius: 50%;
-            border: 5px solid #333;
-        }
-        #pointer {
-            position: absolute;
-            top: -15px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 0;
-            height: 0;
-            border-left: 15px solid transparent;
-            border-right: 15px solid transparent;
-            border-top: 30px solid #00ffcc;
-            z-index: 10;
-        }
-        #winner {
-            font-size: 24px;
-            margin-top: 20px;
-            min-height: 30px;
-            color: #00ffcc;
-            text-shadow: 0 0 10px rgba(0,255,204,0.3);
-        }
+        #wheel-container { position: relative; width: 300px; height: 300px; margin: 20px auto; }
+        #wheel { border-radius: 50%; border: 5px solid #333; background: #222; }
+        #pointer { position: absolute; top: -15px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 15px solid transparent; border-right: 15px solid transparent; border-top: 30px solid #00ffcc; z-index: 10; }
+        #winner { font-size: 24px; margin-top: 20px; color: #00ffcc; min-height: 35px; }
+        .status { font-size: 12px; color: #777; margin-bottom: 10px; }
     </style>
 </head>
 <body>
 
-<h1>🎡 "Bir (Mimari) Tasarım Süreci Anatomisi" Kitap Çekilişi</h1>
-
+<h1>🎡 Live Çekiliş (Canlı)</h1>
 <div class="card">
+    <div id="status" class="status">Sistem Hazır</div>
     <input id="nameInput" placeholder="Katılımcı Adı">
     <br>
-    <button onclick="addName()">Listeye Ekle</button>
+    <button onclick="addName()">Katıl</button>
 
     <div id="wheel-container">
         <div id="pointer"></div>
@@ -91,14 +33,14 @@
 
     <input id="adminPass" type="password" placeholder="Admin Şifresi">
     <br>
-    <button onclick="spin()">🎯 Çevir</button>
+    <button onclick="adminSpin()">🎯 Herkes İçin Çevir</button>
 
     <h2 id="winner"></h2>
 </div>
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
-    import { getDatabase, ref, push, onValue, set } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js";
+    import { getDatabase, ref, push, onValue, set, onChildAdded } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js";
 
     const firebaseConfig = {
         apiKey: "AIzaSyBdP2ctl0ORykFtsoB6TKza7M1W2FsVtpA",
@@ -112,137 +54,117 @@
 
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
-
     const ADMIN_PASSWORD = "2910";
-    let names = [];
-    let currentRotation = 0;
-    let isSpinning = false;
 
+    let names = [];
+    let isCurrentlySpinning = false;
     const canvas = document.getElementById("wheel");
     const ctx = canvas.getContext("2d");
 
-    // Firebase'den isimleri çek
+    // 1. İSİMLERİ TAKİP ET
     onValue(ref(db, "names"), (snapshot) => {
         const data = snapshot.val();
         names = data ? Object.values(data) : [];
-        draw(currentRotation);
+        if (!isCurrentlySpinning) draw(0);
     });
 
-// ➕ ADD NAME (NO DUPLICATE - Case Insensitive)
-window.addName = function(){
-    let inputField = document.getElementById("nameInput");
-    let name = inputField.value.trim();
-    
-    if(!name) return;
+    // 2. CANLI DÖNÜŞÜ TAKİP ET (TÜM KULLANICILAR İÇİN)
+    onValue(ref(db, "spinState"), (snapshot) => {
+        const state = snapshot.val();
+        if (state && state.isSpinning && !isCurrentlySpinning) {
+            startLiveSpin(state.targetRotation, state.duration);
+        }
+    });
 
-    // Küçük harf duyarsız kontrol (Her şeyi küçük harfe çevirip karşılaştırır)
-    const isDuplicate = names.some(existingName => 
-        existingName.toLowerCase() === name.toLowerCase()
-    );
-
-    if(isDuplicate){
-        alert("Bu isim zaten katıldı!");
-        return;
-    }
-
-    push(ref(db, "names"), name);
-    inputField.value = "";
-};
-
-    function draw(rotation = 0) {
-        const size = 300;
-        const center = size / 2;
-        ctx.clearRect(0, 0, size, size);
-        
-        if (names.length === 0) {
-            ctx.fillStyle = "#444";
-            ctx.textAlign = "center";
-            ctx.fillText("Katılımcı bekleniyor...", center, center);
+    window.addName = function() {
+        let name = document.getElementById("nameInput").value.trim();
+        if(!name) return;
+        if(names.some(n => n.toLowerCase() === name.toLowerCase())) {
+            alert("Bu isim zaten listede!");
             return;
         }
+        push(ref(db, "names"), name);
+        document.getElementById("nameInput").value = "";
+    };
 
+    function draw(rotation) {
+        const size = 300, center = 150;
+        ctx.clearRect(0, 0, size, size);
+        if (names.length === 0) return;
         const arc = (2 * Math.PI) / names.length;
-
         names.forEach((name, i) => {
             const angle = rotation + (i * arc);
-            
-            // Dilimi çiz
             ctx.beginPath();
             ctx.fillStyle = `hsl(${(i * 360 / names.length)}, 65%, 50%)`;
             ctx.moveTo(center, center);
             ctx.arc(center, center, center, angle, angle + arc);
-            ctx.lineTo(center, center);
             ctx.fill();
-            ctx.strokeStyle = "rgba(0,0,0,0.2)";
-            ctx.stroke();
-
-            // Yazıyı ekle
             ctx.save();
             ctx.translate(center, center);
             ctx.rotate(angle + arc / 2);
-            ctx.textAlign = "right";
-            ctx.fillStyle = "white";
-            ctx.font = "bold 14px Arial";
+            ctx.textAlign = "right"; ctx.fillStyle = "white"; ctx.font = "bold 14px Arial";
             ctx.fillText(name, center - 20, 5);
             ctx.restore();
         });
     }
 
-    window.spin = function() {
+    // ADMIN KOMUTU: Herkese dönme sinyali gönderir
+    window.adminSpin = function() {
         if (document.getElementById("adminPass").value !== ADMIN_PASSWORD) {
-            alert("Yetkisiz Erişim!");
-            return;
+            alert("Yetkisiz!"); return;
         }
-        if (isSpinning || names.length < 2) {
-            if(names.length < 2) alert("En az 2 katılımcı gerekli!");
-            return;
-        }
+        if (isCurrentlySpinning || names.length < 2) return;
 
-        isSpinning = true;
-        document.getElementById("winner").innerText = "Çark dönüyor...";
-        
-        const duration = 4000; // 4 saniye
+        const targetRotation = (Math.random() * 5 + 10) * 2 * Math.PI; // Rastgele hedef
+        const duration = 5000; // 5 saniye
+
+        set(ref(db, "spinState"), {
+            isSpinning: true,
+            targetRotation: targetRotation,
+            duration: duration,
+            startTime: Date.now()
+        });
+    };
+
+    function startLiveSpin(targetRotation, duration) {
+        isCurrentlySpinning = true;
+        document.getElementById("winner").innerText = "Çekiliş Yapılıyor...";
         const startTimestamp = performance.now();
-        const extraSpins = (Math.random() * 5 + 5) * 2 * Math.PI; // Rastgele dönüş miktarı
-        const startRotation = currentRotation;
 
         function animate(now) {
             const elapsed = now - startTimestamp;
             const progress = Math.min(elapsed / duration, 1);
-            
-            // Easing (yavaşlayarak durma efekti)
             const easeOut = 1 - Math.pow(1 - progress, 3);
             
-            currentRotation = startRotation + (easeOut * extraSpins);
+            const currentRotation = easeOut * targetRotation;
             draw(currentRotation);
 
             if (progress < 1) {
                 requestAnimationFrame(animate);
             } else {
-                isSpinning = false;
-                calculateWinner();
+                finishSpin(targetRotation);
             }
         }
         requestAnimationFrame(animate);
-    };
+    }
 
-    function calculateWinner() {
+    function finishSpin(finalRotation) {
+        isCurrentlySpinning = false;
         const arc = (2 * Math.PI) / names.length;
-        
-        // Ok üstte (-90 derece veya -Math.PI/2 konumunda)
-        // Dönüş miktarını normalize ediyoruz
-        let normalizedRotation = currentRotation % (2 * Math.PI);
-        
-        // Okun ucuna gelen açıyı bul: (3π/2 - dönüş) mod 2π
-        let targetAngle = (1.5 * Math.PI - normalizedRotation) % (2 * Math.PI);
+        let normalized = finalRotation % (2 * Math.PI);
+        let targetAngle = (1.5 * Math.PI - normalized) % (2 * Math.PI);
         if (targetAngle < 0) targetAngle += 2 * Math.PI;
 
         const winnerIndex = Math.floor(targetAngle / arc);
-        const winnerName = names[winnerIndex];
+        document.getElementById("winner").innerText = "🎉 Kazanan: " + names[winnerIndex];
 
-        document.getElementById("winner").innerText = "🎉 Kazanan: " + winnerName;
+        // Sadece admin durumu temizlesin (opsiyonel ama temizlik iyidir)
+        if (document.getElementById("adminPass").value === ADMIN_PASSWORD) {
+            setTimeout(() => {
+                set(ref(db, "spinState"), { isSpinning: false });
+            }, 2000);
+        }
     }
-
 </script>
 </body>
 </html>
